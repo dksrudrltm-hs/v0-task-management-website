@@ -65,9 +65,24 @@ export function CalendarView({
   const getTasksForDate = (date: Date) => {
     return tasks
       .filter((task) => {
-        if (!task.due_date) return false
-        const taskDate = new Date(task.due_date)
-        return taskDate.toDateString() === date.toDateString()
+        const startDate = task.start_date || task.due_date
+        if (!startDate) return false
+
+        const taskStart = new Date(startDate)
+        taskStart.setHours(0, 0, 0, 0)
+
+        const checkDate = new Date(date)
+        checkDate.setHours(0, 0, 0, 0)
+
+        // If task has end date, check if date falls within range
+        if (task.end_date) {
+          const taskEnd = new Date(task.end_date)
+          taskEnd.setHours(0, 0, 0, 0)
+          return checkDate >= taskStart && checkDate <= taskEnd
+        }
+
+        // Single day task
+        return taskStart.getTime() === checkDate.getTime()
       })
       .sort((a, b) => {
         if (!a.start_time && !b.start_time) return 0
@@ -115,6 +130,52 @@ export function CalendarView({
   }
 
   const selectedDateTasks = selectedDate ? getTasksForDate(selectedDate) : []
+
+  const isTaskStartDate = (task: Task, date: Date) => {
+    const startDate = task.start_date || task.due_date
+    if (!startDate) return false
+    const taskStart = new Date(startDate)
+    return taskStart.toDateString() === date.toDateString()
+  }
+
+  const isDateInTaskRange = (task: Task, date: Date) => {
+    const startDate = task.start_date || task.due_date
+    if (!startDate) return false
+
+    const taskStart = new Date(startDate)
+    taskStart.setHours(0, 0, 0, 0)
+
+    const checkDate = new Date(date)
+    checkDate.setHours(0, 0, 0, 0)
+
+    if (task.end_date) {
+      const taskEnd = new Date(task.end_date)
+      taskEnd.setHours(0, 0, 0, 0)
+      return checkDate >= taskStart && checkDate <= taskEnd
+    }
+
+    return taskStart.getTime() === checkDate.getTime()
+  }
+
+  const getTaskRangePosition = (task: Task, date: Date): "single" | "start" | "middle" | "end" => {
+    if (!task.end_date || task.start_date === task.end_date) return "single"
+
+    const startDate = task.start_date || task.due_date
+    if (!startDate) return "single"
+
+    const taskStart = new Date(startDate)
+    taskStart.setHours(0, 0, 0, 0)
+
+    const taskEnd = new Date(task.end_date)
+    taskEnd.setHours(0, 0, 0, 0)
+
+    const checkDate = new Date(date)
+    checkDate.setHours(0, 0, 0, 0)
+
+    if (checkDate.getTime() === taskStart.getTime()) return "start"
+    if (checkDate.getTime() === taskEnd.getTime()) return "end"
+    return "middle"
+  }
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -209,8 +270,8 @@ export function CalendarView({
                         key={index}
                         onClick={() => handleDateClick(date)}
                         className={`
-                          relative flex flex-col items-center justify-center
-                          min-h-[50px] sm:min-h-[70px] p-1 sm:p-2
+                          relative flex flex-col items-center justify-start
+                          min-h-[60px] sm:min-h-[90px] p-1 sm:p-2
                           rounded-lg border-2 text-sm font-semibold
                           hover:bg-primary/10 hover:border-primary transition-all duration-200
                           active:scale-95
@@ -219,19 +280,48 @@ export function CalendarView({
                           ${isSelected ? "bg-accent/20 border-accent shadow-lg" : ""}
                         `}
                       >
-                        <span className={`${isToday ? "text-primary" : ""} text-sm sm:text-base font-bold`}>
+                        <span className={`${isToday ? "text-primary" : ""} text-sm sm:text-base font-bold mb-1`}>
                           {date.getDate()}
                         </span>
                         {dateTasks.length > 0 && (
-                          <div className="flex items-center justify-center mt-1">
-                            <div className="flex gap-0.5">
-                              {dateTasks.slice(0, 3).map((_, i) => (
+                          <div className="w-full space-y-0.5">
+                            {dateTasks.slice(0, 2).map((task, i) => {
+                              const isSpanning = task.end_date && task.start_date !== task.end_date
+                              const rangePosition = getTaskRangePosition(task, date)
+
+                              return (
                                 <div
                                   key={i}
-                                  className="w-1.5 h-1.5 rounded-full bg-gradient-to-r from-primary to-accent"
-                                />
-                              ))}
-                            </div>
+                                  className={`
+                                    text-[8px] sm:text-[10px] font-bold text-center truncate px-1 py-0.5 leading-tight
+                                    ${
+                                      isSpanning
+                                        ? `bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white
+                                          ${rangePosition === "start" ? "rounded-l" : ""}
+                                          ${rangePosition === "end" ? "rounded-r" : ""}
+                                          ${rangePosition === "middle" ? "rounded-none" : ""}
+                                          ${rangePosition === "single" ? "rounded" : ""}`
+                                        : "bg-gradient-to-r from-teal-500/80 to-blue-500/80 text-white rounded"
+                                    }
+                                  `}
+                                  title={`${task.title} ${task.start_time && task.end_time ? `(${task.start_time}-${task.end_time})` : ""}`}
+                                >
+                                  {rangePosition === "start" && "▶ "}
+                                  {task.start_time && task.end_time
+                                    ? `${task.start_time.slice(0, 5)}`
+                                    : rangePosition === "middle"
+                                      ? "━"
+                                      : rangePosition === "end"
+                                        ? "◀"
+                                        : "•"}
+                                </div>
+                              )
+                            })}
+                            {dateTasks.length > 2 && (
+                              <div className="text-[8px] sm:text-[9px] text-center text-muted-foreground font-semibold">
+                                +{dateTasks.length - 2}
+                              </div>
+                            )}
                           </div>
                         )}
                       </button>

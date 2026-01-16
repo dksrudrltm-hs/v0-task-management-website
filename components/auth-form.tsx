@@ -213,7 +213,6 @@ export function AuthForm() {
       }
 
       console.log("[v0] Sign in successful")
-      window.location.reload()
     } catch (err: any) {
       console.error("[v0] Sign in exception:", err)
       if (err.message?.includes("Email not confirmed")) {
@@ -447,7 +446,11 @@ export function AuthForm() {
                     <AlertDescription>{message}</AlertDescription>
                   </Alert>
                 )}
-                <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+                <Button
+                  type="submit"
+                  className="w-full h-12 text-base font-semibold bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 active:scale-[0.98]"
+                  disabled={loading || googleLoading}
+                >
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -578,14 +581,18 @@ export function AuthForm() {
                     <AlertDescription>{message}</AlertDescription>
                   </Alert>
                 )}
-                <Button type="submit" className="w-full" disabled={loading || !nicknameValid || googleLoading}>
+                <Button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 active:scale-[0.98]"
+                  disabled={loading || !nicknameValid || googleLoading}
+                >
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       가입 처리 중...
                     </>
                   ) : (
-                    "회원가입"
+                    "가입하기"
                   )}
                 </Button>
 
