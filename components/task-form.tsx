@@ -79,7 +79,9 @@ export function TaskForm({ workspaceId, userId, task, onClose, onTaskCreated, de
     e.preventDefault()
     setLoading(true)
 
-    const taskData = {
+    console.log("[v0] Task submit started", { hasTask: !!task, hasCurrent: !!currentTask })
+
+    const taskData: any = {
       workspace_id: workspaceId,
       user_id: userId,
       title,
@@ -87,24 +89,59 @@ export function TaskForm({ workspaceId, userId, task, onClose, onTaskCreated, de
       status,
       priority,
       due_date: startDate || null,
-      start_date: startDate || null,
-      end_date: showEndDate && endDate ? endDate : null,
       start_time: startTime || null,
       end_time: endTime || null,
     }
 
+    // Only include date range fields if dates are set (to avoid DB errors if columns don't exist)
+    if (startDate) {
+      taskData.start_date = startDate
+    }
+    if (showEndDate && endDate) {
+      taskData.end_date = endDate
+    }
+
+    console.log("[v0] Task data to save:", taskData)
+
     try {
-      if (currentTask) {
+      if (task) {
         // Update existing task
-        await supabase.from("tasks").update(taskData).eq("id", currentTask.id)
+        console.log("[v0] Updating task:", task.id)
+        const { error } = await supabase.from("tasks").update(taskData).eq("id", task.id)
+
+        if (error) {
+          console.error("[v0] Task update error:", error.message)
+
+          alert(
+            `할 일 업데이트 실패: ${error.message}\n\n` +
+              `데이터베이스 스키마가 업데이트되지 않았을 수 있습니다.\n` +
+              `scripts/007_add_date_range_columns_final.sql 파일을\n` +
+              `Supabase SQL Editor에서 실행해주세요.`,
+          )
+          throw error
+        }
+
+        console.log("[v0] Task updated successfully")
         setLoading(false)
         onTaskCreated()
       } else {
         // Create new task and get the ID for attachments
+        console.log("[v0] Creating new task")
         const { data: newTask, error } = await supabase.from("tasks").insert([taskData]).select().single()
 
-        if (error) throw error
+        if (error) {
+          console.error("[v0] Task creation error:", error.message)
 
+          alert(
+            `할 일 생성 실패: ${error.message}\n\n` +
+              `데이터베이스 스키마가 업데이트되지 않았을 수 있습니다.\n` +
+              `scripts/007_add_date_range_columns_final.sql 파일을\n` +
+              `Supabase SQL Editor에서 실행해주세요.`,
+          )
+          throw error
+        }
+
+        console.log("[v0] Task created successfully:", newTask.id)
         setCurrentTask(newTask)
         setShowAttachmentHint(false)
         setLoading(false)
@@ -118,7 +155,7 @@ export function TaskForm({ workspaceId, userId, task, onClose, onTaskCreated, de
         }
       }
     } catch (error: any) {
-      console.error("[v0] Task save error:", error)
+      console.error("[v0] Task save error:", error.message || error)
       setLoading(false)
     }
   }
@@ -530,7 +567,7 @@ export function TaskForm({ workspaceId, userId, task, onClose, onTaskCreated, de
                   <Button
                     type="submit"
                     disabled={loading || !title.trim()}
-                    className="flex-1 h-12 text-base bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold shadow-lg"
+                    className="flex-1 h-12 text-base bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-semibold shadow-lg"
                   >
                     {loading ? "업데이트 중..." : "업데이트"}
                   </Button>

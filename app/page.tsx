@@ -14,9 +14,14 @@ export default function Home() {
   const currentUserIdRef = useRef<string | null>(null)
 
   const fetchOrCreateWorkspace = useCallback(
-    async (userId: string, userMetadata: any) => {
+    async (userId: string, userMetadata: any, signal?: AbortSignal) => {
       if (workspaceFetchedRef.current && currentUserIdRef.current === userId) {
         return workspaceId
+      }
+
+      if (signal?.aborted) {
+        console.log("[v0] Workspace fetch aborted before start")
+        return null
       }
 
       currentUserIdRef.current = userId
@@ -25,11 +30,15 @@ export default function Home() {
       try {
         console.log("[v0] Fetching workspace for user:", userId)
 
+        if (signal?.aborted) return null
+
         const { data: workspace, error: fetchError } = await supabase
           .from("workspaces")
           .select("id")
           .eq("user_id", userId)
           .maybeSingle()
+
+        if (signal?.aborted) return null
 
         if (fetchError) {
           console.error("[v0] Error fetching workspace:", fetchError)
@@ -45,6 +54,8 @@ export default function Home() {
           const nickname =
             userMetadata?.nickname || userMetadata?.full_name || userMetadata?.email?.split("@")[0] || "사용자"
 
+          if (signal?.aborted) return null
+
           const { data: newWorkspace, error: createError } = await supabase
             .from("workspaces")
             .insert({
@@ -54,6 +65,8 @@ export default function Home() {
             })
             .select("id")
             .single()
+
+          if (signal?.aborted) return null
 
           if (createError) {
             console.error("[v0] Error creating workspace:", createError)
@@ -68,9 +81,13 @@ export default function Home() {
           }
         }
       } catch (err) {
-        console.error("[v0] Workspace error:", err)
+        if (!signal?.aborted) {
+          console.error("[v0] Workspace error:", err)
+        }
       } finally {
-        setWorkspaceLoading(false)
+        if (!signal?.aborted) {
+          setWorkspaceLoading(false)
+        }
       }
       return null
     },
@@ -82,49 +99,63 @@ export default function Home() {
     const abortController = new AbortController()
 
     const checkAuth = async () => {
-      // Handle hash fragment tokens (email verification)
-      if (typeof window !== "undefined" && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get("access_token")
-        const refreshToken = hashParams.get("refresh_token")
+      try {
+        if (typeof window !== "undefined" && window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1))
+          const accessToken = hashParams.get("access_token")
+          const refreshToken = hashParams.get("refresh_token")
 
-        if (accessToken) {
-          console.log("[v0] Processing hash fragment auth token")
-          try {
-            const { data, error } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken || "",
-            })
+          if (accessToken && !abortController.signal.aborted) {
+            console.log("[v0] Processing hash fragment auth token")
+            try {
+              const { data, error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken || "",
+              })
 
-            if (!error && data?.session) {
-              console.log("[v0] Session set from hash token")
-              window.history.replaceState(null, "", window.location.pathname)
+              if (!error && data?.session && !abortController.signal.aborted) {
+                console.log("[v0] Session set from hash token")
+                window.history.replaceState(null, "", window.location.pathname)
+              }
+            } catch (err) {
+              if (!abortController.signal.aborted) {
+                console.error("[v0] Error setting session from hash:", err)
+              }
             }
-          } catch (err) {
-            console.error("[v0] Error setting session from hash:", err)
           }
         }
-      }
 
-      if (abortController.signal.aborted) return
+        if (abortController.signal.aborted) return
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-      if (!isMounted || abortController.signal.aborted) return
+        if (!isMounted || abortController.signal.aborted) return
 
-      if (session?.user) {
-        console.log("[v0] User authenticated:", session.user.email)
-        setUser(session.user)
-        await fetchOrCreateWorkspace(session.user.id, {
-          ...session.user.user_metadata,
-          email: session.user.email,
-        })
-      }
+        if (session?.user) {
+          console.log("[v0] User authenticated:", session.user.email)
+          setUser(session.user)
+          await fetchOrCreateWorkspace(
+            session.user.id,
+            {
+              ...session.user.user_metadata,
+              email: session.user.email,
+            },
+            abortController.signal,
+          )
+        }
 
-      if (isMounted) {
-        setLoading(false)
+        if (isMounted && !abortController.signal.aborted) {
+          setLoading(false)
+        }
+      } catch (err) {
+        if (!abortController.signal.aborted) {
+          console.error("[v0] Auth check error:", err)
+          if (isMounted) {
+            setLoading(false)
+          }
+        }
       }
     }
 
@@ -137,30 +168,39 @@ export default function Home() {
 
       if (!isMounted || abortController.signal.aborted) return
 
-      if (event === "SIGNED_IN" && session?.user) {
-        console.log("[v0] User signed in:", session.user.email)
-        setUser(session.user)
-        if (currentUserIdRef.current !== session.user.id) {
-          await fetchOrCreateWorkspace(session.user.id, {
-            ...session.user.user_metadata,
-            email: session.user.email,
-          })
+      try {
+        if (event === "SIGNED_IN" && session?.user) {
+          console.log("[v0] User signed in:", session.user.email)
+          setUser(session.user)
+          if (currentUserIdRef.current !== session.user.id) {
+            await fetchOrCreateWorkspace(
+              session.user.id,
+              {
+                ...session.user.user_metadata,
+                email: session.user.email,
+              },
+              abortController.signal,
+            )
+          }
+          if (isMounted && !abortController.signal.aborted) {
+            setLoading(false)
+          }
+        } else if (event === "SIGNED_OUT") {
+          console.log("[v0] User signed out")
+          setUser(null)
+          setWorkspaceId(null)
+          workspaceFetchedRef.current = false
+          currentUserIdRef.current = null
+          if (isMounted) {
+            setLoading(false)
+          }
+        } else if (event === "TOKEN_REFRESHED" && session?.user) {
+          setUser(session.user)
         }
-        if (isMounted) {
-          setLoading(false)
+      } catch (err) {
+        if (!abortController.signal.aborted) {
+          console.error("[v0] Auth state change error:", err)
         }
-      } else if (event === "SIGNED_OUT") {
-        console.log("[v0] User signed out")
-        setUser(null)
-        setWorkspaceId(null)
-        workspaceFetchedRef.current = false
-        currentUserIdRef.current = null
-        if (isMounted) {
-          setLoading(false)
-        }
-      } else if (event === "TOKEN_REFRESHED" && session?.user) {
-        // Just update user, don't refetch workspace
-        setUser(session.user)
       }
     })
 
