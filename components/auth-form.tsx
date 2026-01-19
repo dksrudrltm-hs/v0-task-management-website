@@ -241,10 +241,16 @@ export function AuthForm() {
 
       console.log("[v0] OAuth redirect URL:", redirectUrl)
 
+      // Detect if we're on a mobile device
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      console.log("[v0] Is mobile device:", isMobile)
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: redirectUrl,
+          // Always skip automatic redirect for better control
+          skipBrowserRedirect: false,
           queryParams: {
             access_type: "offline",
             prompt: "consent",
@@ -258,6 +264,7 @@ export function AuthForm() {
       }
 
       console.log("[v0] Google OAuth initiated successfully")
+      // Note: Don't reset googleLoading here - user will be redirected
     } catch (err: any) {
       console.error("[v0] Google OAuth exception:", err)
       setError(err.message || "Google 로그인 중 오류가 발생했습니다.")
